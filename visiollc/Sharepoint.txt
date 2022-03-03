@@ -1,0 +1,44 @@
+public static string RunPipelineScriptFile(string filePath)
+        {
+            InitialSessionState session = InitialSessionState.CreateDefault();
+            Runspace runSpace = RunspaceFactory.CreateRunspace(session);
+            runSpace.Open();
+            Pipeline pipeline = runSpace.CreatePipeline();
+            Command command = new Command(filePath);
+            pipeline.Commands.Add(command);
+            var results = pipeline.Invoke();
+            runSpace.Close();
+            StringBuilder infoBuilder = new StringBuilder();
+            foreach (PSObject obj in results)
+                infoBuilder.AppendLine(obj.ToString());
+            return infoBuilder.ToString();
+        }
+
+        public static string RunScriptFile(string filePath)
+        {
+            InitialSessionState session = InitialSessionState.CreateDefault();
+            Runspace runSpace = RunspaceFactory.CreateRunspace(session);
+            runSpace.Open();
+
+            using (PowerShell ps = PowerShell.Create())
+            {
+                ps.Runspace = runSpace;
+                Command command = new Command(filePath);
+                ps.Commands.AddCommand(command);
+                var results = ps.Invoke();
+                runSpace.Close();
+                StringBuilder builder = new StringBuilder();
+                if (ps.HadErrors)
+                {
+                    foreach (var error in ps.Streams.Error)
+                        builder.AppendLine(error.Exception.Message);
+                }
+                else
+                {
+
+                    foreach (PSObject obj in results)
+                        builder.AppendLine(obj.ToString());
+                }
+                return builder.ToString();
+            }
+        }
