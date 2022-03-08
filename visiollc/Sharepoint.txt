@@ -1,71 +1,130 @@
-public static string RunPipelineScriptFile(string filePath)
-        {
-            InitialSessionState session = InitialSessionState.CreateDefault();
-            Runspace runSpace = RunspaceFactory.CreateRunspace(session);
-            runSpace.Open();
-            Pipeline pipeline = runSpace.CreatePipeline();
-            Command command = new Command(filePath);
-            pipeline.Commands.Add(command);
-            var results = pipeline.Invoke();
-            runSpace.Close();
-            StringBuilder infoBuilder = new StringBuilder();
-            foreach (PSObject obj in results)
-                infoBuilder.AppendLine(obj.ToString());
-            return infoBuilder.ToString();
-        }
+public static void Main()
+{
+	string FileText = "";
+	string ErrorMessage = "";
+	// INPUT
+	string SailPointFileUrl = @"https://zilliontech.sharepoint.com/sites/NetTrainees/Shared%20Documents/General/Sharepoint-Auth-Test.txt";
+	string DownloadFolderPath = @"C:\Users\Prabakaran\Downloads\Test";
 
-        public static string RunScriptFile(string filePath)
-        {
-            InitialSessionState session = InitialSessionState.CreateDefault();
-            Runspace runSpace = RunspaceFactory.CreateRunspace(session);
-            runSpace.Open();
+	// Dont' Touch
+	string SiteURL = GetSailPointSiteUrl(SailPointFileUrl);
+	string SourceFilePath = GetSailPointAbsolutePath(SailPointFileUrl);
+	string FileName = GetRandomFileName(SourceFilePath);
 
-            using (PowerShell ps = PowerShell.Create())
-            {
-                ps.Runspace = runSpace;
-                Command command = new Command(filePath);
-                ps.Commands.AddCommand(command);
-                var results = ps.Invoke();
-                runSpace.Close();
-                StringBuilder builder = new StringBuilder();
-                if (ps.HadErrors)
-                {
-                    foreach (var error in ps.Streams.Error)
-                        builder.AppendLine(error.Exception.Message);
-                }
-                else
-                {
+	try
+	{
+		// Check & Create Download Directory If Not Exist
+		if (!Directory.Exists(DownloadFolderPath))
+		{
+			Directory.CreateDirectory(DownloadFolderPath);
+		}
 
-                    foreach (PSObject obj in results)
-                        builder.AppendLine(obj.ToString());
-                }
-                return builder.ToString();
-            }
-        }
-		
-		
-		
-		
-		
-		
-		
-		
 		RunspaceConfiguration runspaceConfiguration = RunspaceConfiguration.Create();
 
-                using (Runspace runspace = RunspaceFactory.CreateRunspace(runspaceConfiguration))
-                {
-                    runspace.Open();
-                    RunspaceInvoke scriptInvoker = new RunspaceInvoke(runspace);
-                    //scriptInvoker.Invoke("Set-ExecutionPolicy Unrestricted -Scope CurrentUser ");
-                    Pipeline pipeline = runspace.CreatePipeline();
-                    Command scriptCommand = new Command("C:\\temp\\test.ps1");
-                    Collection<CommandParameter> commandParameters = new Collection<CommandParameter>();
+		using (Runspace runspace = RunspaceFactory.CreateRunspace(runspaceConfiguration))
+		{
+			runspace.Open();
+			RunspaceInvoke scriptInvoker = new RunspaceInvoke(runspace);
+			// Step 1: Get current user ExecutionPolicy & Store it on a variable 
+			scriptInvoker.Invoke("$ExecutionPolicy = Get-ExecutionPolicy -Scope CurrentUser");
+			// Step 2: Set Unrestricted ExecutionPolicy for current user
+			scriptInvoker.Invoke("Set-ExecutionPolicy Unrestricted -Scope CurrentUser");
 
-                    pipeline.Commands.Add(scriptCommand);
-                    Collection<PSObject> psObjects;
-                    psObjects = pipeline.Invoke();
-                    StringBuilder builder = new StringBuilder();
-                    foreach (PSObject obj in psObjects)
-                        builder.AppendLine(obj.ToString());
-                    Result = builder.ToString();
-                }
+			try
+			{
+				Command cmd = new Command(@"C:\Users\Prabakaran\Downloads\Visiollc\Share\visiollc\hello.ps1");
+				cmd.Parameters.Add("SiteURL", SiteURL);
+				cmd.Parameters.Add("SourceFilePath", SourceFilePath);
+				cmd.Parameters.Add("DownloadFolderPath", DownloadFolderPath);
+				cmd.Parameters.Add("Filename", FileName);
+
+				var result = ExecutePSCmd(cmd);
+				var filePath = $"{DownloadFolderPath}\\{FileName}";
+				if (File.Exists(filePath))
+				{
+					// Read The File
+					FileText = File.ReadAllText(FileName);
+				}
+				else
+				{
+					throw new Exception($"File was not found on the path {filePath}");
+				}
+			}
+			finally
+			{
+				// Step 3: Revert back the ExecutionPolicy as before we changed it. for $ExecutionPolicy variable Ref: (Step 1)
+				scriptInvoker.Invoke("Set-ExecutionPolicy -Scope CurrentUser $ExecutionPolicy -Force");
+			}
+
+		}
+	}
+	catch (Exception ex)
+	{
+		ErrorMessage = ex.Message;
+	}
+}
+
+private static string ExecutePSCmd(Command cmd, Runspace runspace = null)
+{
+	using (PowerShell ps = PowerShell.Create())
+	{
+		ps.Runspace = runspace;
+		ps.Commands.AddCommand(cmd);
+		var results = ps.Invoke();
+		StringBuilder builder = new StringBuilder();
+
+		if (ps.HadErrors)
+		{
+			int idx = 1;
+			foreach (var error in ps.Streams.Error)
+			{
+				builder.AppendLine($"============================ERROR-{idx}============================");
+				builder.AppendLine("Message : " + error.Exception.Message + Environment.NewLine);
+				builder.AppendLine("StackTrace : " + error.Exception.StackTrace + Environment.NewLine);
+				idx++;
+			}
+			throw new Exception(builder.ToString());
+		}
+		foreach (var obj in ps.Streams.Information)
+		{
+			builder.AppendLine(obj.MessageData.ToString());
+		}
+		return builder.ToString();
+	}
+}
+
+private static string GetRandomFileName(string url)
+{
+	string FileName = System.IO.Path.GetFileNameWithoutExtension(url);
+	string FileExt = System.IO.Path.GetExtension(url);
+
+	return Uri.UnescapeDataString($"{FileName}-{DateTime.Now.ToString("ddMMyyyHHmmss")}{FileExt}");
+}
+
+private static string GetSailPointSiteUrl(string url)
+{
+	Uri uri = new Uri(url);
+	if (uri.Segments.Length <= 3)
+		throw new Exception("Invalid SailPoint FileUrl");
+
+	StringBuilder bld = new StringBuilder(uri.AbsoluteUri.Replace(uri.AbsolutePath, ""));
+	for (int i = 0; i < 3; i++)
+	{
+		bld.Append(uri.Segments[i]);
+	}
+	return Uri.UnescapeDataString(bld.ToString().TrimEnd('/'));
+}
+
+private static string GetSailPointAbsolutePath(string url)
+{
+	Uri uri = new Uri(url);
+	if (uri.Segments.Length <= 3)
+		throw new Exception("Invalid SailPoint FileUrl");
+
+	StringBuilder bld = new StringBuilder("/");
+	for (int i = 3; i < uri.Segments.Length; i++)
+	{
+		bld.Append(uri.Segments[i]);
+	}
+	return Uri.UnescapeDataString(bld.ToString());
+}
