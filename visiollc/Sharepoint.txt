@@ -42,3 +42,30 @@ public static string RunPipelineScriptFile(string filePath)
                 return builder.ToString();
             }
         }
+		
+		
+		
+		
+		
+		
+		
+		
+		RunspaceConfiguration runspaceConfiguration = RunspaceConfiguration.Create();
+
+                using (Runspace runspace = RunspaceFactory.CreateRunspace(runspaceConfiguration))
+                {
+                    runspace.Open();
+                    RunspaceInvoke scriptInvoker = new RunspaceInvoke(runspace);
+                    //scriptInvoker.Invoke("Set-ExecutionPolicy Unrestricted -Scope CurrentUser ");
+                    Pipeline pipeline = runspace.CreatePipeline();
+                    Command scriptCommand = new Command("C:\\temp\\test.ps1");
+                    Collection<CommandParameter> commandParameters = new Collection<CommandParameter>();
+
+                    pipeline.Commands.Add(scriptCommand);
+                    Collection<PSObject> psObjects;
+                    psObjects = pipeline.Invoke();
+                    StringBuilder builder = new StringBuilder();
+                    foreach (PSObject obj in psObjects)
+                        builder.AppendLine(obj.ToString());
+                    Result = builder.ToString();
+                }
